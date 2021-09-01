@@ -1,14 +1,17 @@
 # fonterator
 
+**Fork: use kurbo bezpath instead of footile** (for graphite).
+
+Examples removed as they won't work.
+
 #### Load fonts as vector graphics in pure Rust with advanced text layout.
 
 [![Build Status](https://api.travis-ci.org/libcala/fonterator.svg?branch=master)](https://travis-ci.org/libcala/fonterator)
 [![Docs](https://docs.rs/fonterator/badge.svg)](https://docs.rs/fonterator)
 [![crates.io](https://img.shields.io/crates/v/fonterator.svg)](https://crates.io/crates/fonterator)
 
-When you want to render text, fonterator gives you an iterator over
-[footile](https://crates.io/crates/footile) `PathOp`s, which you can easily
-pass right into footile.
+When you want to render text, fonterator gives you a
+[kurbo](https://crates.io/crates/kurbo) `BezPath`.
 
 - Loads TTF/OTF fonts and font collections.
 - Automatic kerning and font layout.
@@ -43,7 +46,7 @@ fonterator = "0.8"
 ```rust,no_run
 use fonterator as font; // For parsing font file.
 // For rendering text
-use footile::{FillRule, Plotter, PathOp, Transform};
+use footile::{FillRule, Plotter, PathEl, Transform};
 use png_pong::Encoder; // For saving PNG
 use pix::{
     Raster,
@@ -52,7 +55,7 @@ use pix::{
     ops::{SrcOver}
 };
 
-const FONT_SIZE: f32 = 32.0;
+const FONT_SIZE: f64 = 32.0;
 
 fn main() {
     // Example Text

@@ -8,7 +8,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::direction::{direction, Direction};
-use footile::{PathOp, Pt};
+use kurbo::{BezPath, PathEl, Point};
 use rustybuzz::{
     Face as FaceShaper, GlyphBuffer, GlyphInfo, GlyphPosition, UnicodeBuffer,
 };
@@ -18,7 +18,7 @@ struct LangFont<'a>(Face<'a>, FaceShaper<'a>);
 
 struct Outliner<'a> {
     // Path to write out to.
-    path: &'a mut Vec<PathOp>,
+    path: &'a mut Vec<PathEl>,
     // How tall the font is (used to invert the Y axis).
     ascender: f32,
     // Translated X and Y positions.
@@ -32,14 +32,14 @@ impl OutlineBuilder for Outliner<'_> {
         let x = x + self.offset.0;
         let y = self.ascender - (y + self.offset.1);
         self.path
-            .push(PathOp::Move(Pt(x * self.scale, y * self.scale)));
+            .push(PathEl::MoveTo(Point::new((x * self.scale) as f64, (y * self.scale) as f64)));
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
         let x = x + self.offset.0;
         let y = self.ascender - (y + self.offset.1);
         self.path
-            .push(PathOp::Line(Pt(x * self.scale, y * self.scale)));
+            .push(PathEl::LineTo(Point::new((x * self.scale) as f64, (y * self.scale) as f64)));
     }
 
     fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
@@ -47,9 +47,9 @@ impl OutlineBuilder for Outliner<'_> {
         let x1 = x1 + self.offset.0;
         let y = self.ascender - (y + self.offset.1);
         let y1 = self.ascender - (y1 + self.offset.1);
-        self.path.push(PathOp::Quad(
-            Pt(x1 * self.scale, y1 * self.scale),
-            Pt(x * self.scale, y * self.scale),
+        self.path.push(PathEl::QuadTo(
+            Point::new((x1 * self.scale) as f64, (y1 * self.scale) as f64),
+            Point::new((x * self.scale) as f64, (y * self.scale) as f64),
         ));
     }
 
@@ -61,15 +61,15 @@ impl OutlineBuilder for Outliner<'_> {
         let y1 = self.ascender - (y1 + self.offset.1);
         let y2 = self.ascender - (y2 + self.offset.1);
 
-        self.path.push(PathOp::Cubic(
-            Pt(x1 * self.scale, y1 * self.scale),
-            Pt(x2 * self.scale, y2 * self.scale),
-            Pt(x * self.scale, y * self.scale),
+        self.path.push(PathEl::CurveTo(
+            Point::new((x1 * self.scale) as f64, (y1 * self.scale) as f64),
+            Point::new((x2 * self.scale) as f64, (y2 * self.scale) as f64),
+            Point::new((x * self.scale) as f64, (y * self.scale) as f64),
         ));
     }
 
     fn close(&mut self) {
-        self.path.push(PathOp::Close());
+        self.path.push(PathEl::ClosePath);
     }
 }
 
@@ -84,7 +84,7 @@ impl<'a> StyledFont<'a> {
     fn path(
         &self,
         index: usize,
-        path: &mut Vec<PathOp>,
+        path: &mut Vec<PathEl>,
         offset: &mut (i32, i32),
     ) {
         let GlyphInfo {
@@ -130,7 +130,7 @@ impl<'a> StyledFont<'a> {
 #[allow(missing_debug_implementations)]
 #[derive(Default)]
 pub struct Font<'a> {
-    paths: Vec<PathOp>,
+    paths: Vec<PathEl>,
     fonts: Vec<StyledFont<'a>>,
 }
 
@@ -309,7 +309,7 @@ impl<'a> Font<'a> {
         let mut xy = (0.0, 0.0);
         let mut vertical = false;
 
-        // Second Pass: Get `PathOp`s
+        // Second Pass: Get `PathEl`s
         (
             TextPathIterator {
                 temp: vec![],
@@ -325,7 +325,7 @@ struct CharPathIterator<'a> {
     // The font to use.
     font: &'a Font<'a>,
     // Path of the current character.
-    path: Vec<PathOp>,
+    path: BezPath,
     // Return position for X.
     xy: (f32, f32),
     // General direction of the text.
@@ -344,7 +344,7 @@ impl<'a> CharPathIterator<'a> {
     fn new(font: &'a Font<'a>, xy: (f32, f32), vertical: bool) -> Self {
         Self {
             font,
-            path: vec![],
+            path: BezPath::new(),
             xy,
             direction: Direction::CheckNext,
             last: None,
@@ -387,7 +387,7 @@ impl<'a> CharPathIterator<'a> {
         self.path.clear();
 
         /*        if self.bold {
-            self.path.push(PathOp::PenWidth(self.size.0 / 10.0));
+            self.path.push(PathEl::PenWidth(self.size.0 / 10.0));
         }*/
 
         let font_height = selected_font.0.height() as f32;
@@ -428,7 +428,7 @@ impl<'a> CharPathIterator<'a> {
 }
 
 impl Iterator for CharPathIterator<'_> {
-    type Item = PathOp;
+    type Item = PathEl;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.path.pop()
@@ -444,17 +444,17 @@ pub struct TextPathIterator<'a, 'b> {
     until: usize,
     // Current glyph index.
     index: usize,
-    // Index for `PathOp`s.
+    // Index for `PathEl`s.
     path_i: usize,
     // x and y offset.
     offset: (i32, i32),
 }
 
 impl Iterator for TextPathIterator<'_, '_> {
-    type Item = PathOp;
+    type Item = PathEl;
 
-    fn next(&mut self) -> Option<PathOp> {
-        // First, check for remaining PathOp's in the glyph path buffer.
+    fn next(&mut self) -> Option<PathEl> {
+        // First, check for remaining PathEl's in the glyph path buffer.
         if self.path_i != self.fontc.paths.len() {
             let path_op = self.fontc.paths[self.path_i];
             self.path_i += 1;
