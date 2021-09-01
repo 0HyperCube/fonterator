@@ -168,10 +168,8 @@ impl<'a> Font<'a> {
     pub fn render<'b>(
         &'b mut self,
         text: &str,
-        row: f32,
+        row: i32,
     ) -> (TextPathIterator<'a, 'b>, Option<usize>) {
-        let row: f64 = row.into();
-        let row: i32 = (u16::MAX as f64 * row) as i32;
         let mut text = text;
 
         // Look for newlines and spaces to handle specially.
