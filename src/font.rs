@@ -14,8 +14,7 @@ use rustybuzz::{
 };
 use ttf_parser::{kern::Subtable, Face, GlyphId, OutlineBuilder};
 
-#[macro_use]
-extern crate lazy_static;
+
 
 struct LangFont<'a>(Face<'a>, FaceShaper<'a>);
 
@@ -518,8 +517,6 @@ impl Iterator for TextPathIterator<'_, '_> {
 }
 
 lazy_static! {
-    static ref SOURCE_REGULAR: &'static[u8] =
-        include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf");
     pub static ref SOURCE_FONT: Font<'static> =
-        Font::new().push(SOURCE_REGULAR).unwrap();
+        Font::new().push(include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf") as &[u8]).unwrap();
 }
