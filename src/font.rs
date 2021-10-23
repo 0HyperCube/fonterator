@@ -511,5 +511,5 @@ impl Iterator for TextPathIterator<'_, '_> {
 }
 
 const SOURCE_FONT: Font<'static> = Font::new()
-    .push(include_bytes!("font/SourceSansPro-Regular.ttf"))
+    .push(include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf"))
     .unwrap();
