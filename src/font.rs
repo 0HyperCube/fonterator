@@ -7,12 +7,11 @@
 // or http://opensource.org/licenses/Zlib>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::direction::{direction, Direction};
-use kurbo::{BezPath, PathEl, Point};
+use kurbo::{PathEl, Point};
 use rustybuzz::{
     Face as FaceShaper, GlyphBuffer, GlyphInfo, GlyphPosition, UnicodeBuffer,
 };
-use ttf_parser::{kern::Subtable, Face, GlyphId, OutlineBuilder};
+use ttf_parser::{Face, GlyphId, OutlineBuilder};
 
 
 
@@ -86,7 +85,7 @@ struct StyledFont<'a> {
     none: LangFont<'a>,
 }
 
-impl<'a> StyledFont<'a> {
+impl StyledFont<'_> {
     fn path(
         &self,
         index: usize,
@@ -162,11 +161,10 @@ impl<'a> Font<'a> {
         Some(self)
     }
 
-    /// Render some text.  Returns an iterator and index within the `&str` where
-    /// rendering stopped.
+    /// Render some text.  Returns an iterator.
     ///  - `text`: text to render.
-    ///  - `row`: x (Left/Right align) or y (Up/Down align) offset where to stop
-    ///    rendering.
+    ///  - `row_length`: x position for line wrapping
+    ///  - `row_drop`: y shift for new lines
     ///
     ///  Returns an iterator which generates the path from characters (see
     ///  [`TextPathIterator`]) and a number indicating how many characters are
@@ -176,22 +174,7 @@ impl<'a> Font<'a> {
         text: &str,
         row_length: i32,
         row_drop: i32,
-    ) -> (TextPathIterator<'a, 'b>, Option<usize>) {
-        let mut text = text;
-
-        // Look for newlines and spaces to handle specially.
-        let mut left_over = None;
-        for (i, c) in text.char_indices() {
-            match c {
-                // ' ' => last_space = i,
-                '\n' => {
-                    left_over = Some(i + 1);
-                    text = &text[..i];
-                    break;
-                }
-                _ => {}
-            }
-        }
+    ) -> TextPathIterator<'a, 'b> {
 
         // Replace glyph buffer using text.
         // FIXME: Currently only using first font.
@@ -212,252 +195,49 @@ impl<'a> Font<'a> {
             .as_ref()
             .unwrap()
             .glyph_positions();
-        let infos = self.fonts[0].glyph_buffer.as_ref().unwrap().glyph_infos();
         let until = positions.len();
 
+
+        // Handle line breaks
+
+        // How far line moved on x
         let mut x_pos = 0;
-        let mut row_indicies = Vec::new();
-        let mut last_space = None;
-        for (index, character) in text.char_indices(){
-            x_pos+= positions[index].x_advance;
+        let mut line_break_indicies = Vec::new();
+        let mut last_space_index = None;
+        for ((index, character), glyph) in text.char_indices().zip(positions){
+            x_pos+= glyph.x_advance;
             if character == ' '{
                 println!("Space at {}", index);
-                last_space = Some(index);
+                last_space_index = Some(index);
             }
-            if character == '\n'{
-                row_indicies.push(index);
+            else if character == '\n'{
+                line_break_indicies.push(index);
                 x_pos = 0;
-                last_space = None;
+                last_space_index = None;
             }
-            if x_pos > row_length{
-                if let Some(x) = last_space{
-                    row_indicies.push(x);
+            else if x_pos > row_length{
+                if let Some(x) = last_space_index{
+                    line_break_indicies.push(x);
                 }else{
-                    row_indicies.push(index);
+                    line_break_indicies.push(index);
                 }
                 
                 x_pos = 0;
-                last_space = None;
+                last_space_index = None;
             }
         }
 
-        // Return iterator over PathOps and index to start on next call.
-        (
+        // Return iterator over PathOps
             TextPathIterator {
                 fontc: self,
                 until,
                 index: 0,
                 path_i: 0,
                 offset: (0, 0),
-                row_indicies,
+                line_break_indicies,
                 row_drop
-            },
-            left_over,
-        )
-
-        /*let mut pixel_length = 0.0;
-        let mut last = None;
-        let mut left_over = None;
-        let mut last_space = 0;
-
-        // First Pass: Get pixel length
-        for (i, c) in text.char_indices() {
-            match c {
-                ' ' => last_space = i,
-                '\n' => {
-                    left_over = Some(i + 1);
-                    break;
-                }
-                _ => {}
             }
 
-            let mut index = 0;
-            let glyph_id = loop {
-                match self.fonts[index].none.0.glyph_index(c) {
-                    Some(v) => break v,
-                    None => {
-                        index += 1;
-                        if index == self.fonts.len() {
-                            // eprintln!("No Glyph for \"{}\" ({})", c, c as u32);
-                            index = 0;
-                            break self.fonts[0]
-                                .none
-                                .0
-                                .glyph_index('�')
-                                .unwrap();
-                        }
-                    }
-                }
-            };
-
-            let selected_font = &self.fonts[index].none;
-
-            // Transform font size.
-            let fh = selected_font.0.height() as f32;
-            let font_size = (fh.recip(), fh.recip());
-
-            let advance = match selected_font.0.glyph_hor_advance(glyph_id) {
-                Some(adv) => {
-                    font_size.0
-                        * (f32::from(adv)
-                            + if let Some(last) = last {
-                                selected_font
-                                    .0
-                                    .kerning_subtables()
-                                    .next()
-                                    .unwrap_or_else(Subtable::default)
-                                    .glyphs_kerning(glyph_id, last)
-                                    .unwrap_or(0)
-                                    .into()
-                            } else {
-                                0f32
-                            })
-                }
-                None => 0.0,
-            };
-
-            pixel_length += advance;
-
-            // Extends past the width of the bounding box.
-            if pixel_length > row {
-                if last_space != 0 {
-                    left_over = Some(last_space + 1);
-                    break;
-                } else {
-                    left_over = Some(i + 1);
-                    break;
-                }
-            }
-
-            last = Some(glyph_id);
-        }
-
-        let mut xy = (0.0, 0.0);
-        let mut vertical = false;
-
-        // Second Pass: Get `PathEl`s
-        (
-            TextPathIterator {
-                temp: vec![],
-                back: false,
-                path: CharPathIterator::new(self, xy, vertical),
-            },
-            left_over.unwrap_or_else(|| text.bytes().len()),
-        )*/
-    }
-}
-
-struct CharPathIterator<'a> {
-    // The font to use.
-    font: &'a Font<'a>,
-    // Path of the current character.
-    path: BezPath,
-    // Return position for X.
-    xy: (f32, f32),
-    // General direction of the text.
-    direction: Direction,
-    // Last character
-    last: Option<GlyphId>,
-    //
-    vertical: bool,
-    //
-    font_ascender: f32,
-    //
-    font_size: (f32, f32),
-}
-
-impl<'a> CharPathIterator<'a> {
-    fn new(font: &'a Font<'a>, xy: (f32, f32), vertical: bool) -> Self {
-        Self {
-            font,
-            path: BezPath::new(),
-            xy,
-            direction: Direction::CheckNext,
-            last: None,
-            vertical,
-            font_ascender: 0.0,
-            font_size: (0.0, 0.0),
-        }
-    }
-
-    fn set(&mut self, c: char) {
-        /*match c {
-            '\n' => return,
-            _ => {}
-        }
-
-        if self.direction == Direction::CheckNext {
-            self.direction = direction(c);
-        }
-
-        let mut index = 0;
-        let glyph_id = loop {
-            match self.font.fonts[index].none.0.glyph_index(c) {
-                Some(v) => break v,
-                None => {
-                    index += 1;
-                    if index == self.font.fonts.len() {
-                        index = 0;
-                        break self.font.fonts[0]
-                            .none
-                            .0
-                            .glyph_index('�')
-                            .unwrap();
-                    }
-                }
-            }
-        };
-
-        let selected_font = &self.font.fonts[index].none;
-
-        self.path.clear();
-
-        /*        if self.bold {
-            self.path.push(PathEl::PenWidth(self.size.0 / 10.0));
-        }*/
-
-        let font_height = selected_font.0.height() as f32;
-        self.font_ascender = selected_font.0.ascender() as f32;
-        self.font_size = (font_height.recip(), font_height.recip());
-
-        selected_font.0.outline_glyph(glyph_id, self);
-
-        if self.vertical {
-            self.xy.1 += 1.0;
-        } else {
-            let advance = match selected_font.0.glyph_hor_advance(glyph_id) {
-                Some(adv) => {
-                    self.font_size.0
-                        * (f32::from(adv)
-                            + if let Some(last) = self.last {
-                                selected_font
-                                    .0
-                                    .kerning_subtables()
-                                    .next()
-                                    .unwrap_or_else(Subtable::default)
-                                    .glyphs_kerning(glyph_id, last)
-                                    .unwrap_or(0)
-                                    .into()
-                            } else {
-                                0f32
-                            })
-                }
-                None => 0.0,
-            };
-            self.xy.0 += advance;
-        }
-
-        self.path.reverse();
-
-        self.last = Some(glyph_id);*/
-    }
-}
-
-impl Iterator for CharPathIterator<'_> {
-    type Item = PathEl;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.path.pop()
     }
 }
 
@@ -472,9 +252,11 @@ pub struct TextPathIterator<'a, 'b> {
     index: usize,
     // Index for `PathEl`s.
     path_i: usize,
-    // x and y offset.
+    /// The x and y offset.
     pub offset: (i32, i32),
-    row_indicies: Vec<usize>,
+    // Letter indecies where there are line breaks
+    line_break_indicies: Vec<usize>,
+    // Y offset change on line breaks
     row_drop: i32,
 }
 
@@ -499,7 +281,7 @@ impl Iterator for TextPathIterator<'_, '_> {
                 &mut self.offset,
             );
             println!("off {:?}", self.offset);
-            if self.row_indicies.contains(&self.index){
+            if self.line_break_indicies.contains(&self.index){
                 self.offset.0 = 0;
                 self.offset.1 += self.row_drop;
             }
@@ -509,42 +291,9 @@ impl Iterator for TextPathIterator<'_, '_> {
             None
         }
     }
-
-    /*  if let Some(op) = self.path.next() {
-            Some(op)
-        } else if let Some(c) = self.text.peek() {
-            let dir = direction(*c);
-            let dir = if dir == Direction::CheckNext {
-                if self.back {
-                    Direction::RightLeft
-                } else {
-                    Direction::LeftRight
-                }
-            } else {
-                dir
-            };
-            if dir == Direction::RightLeft {
-                let c = self.text.next().unwrap();
-                if !self.back {
-                    self.back = true;
-                }
-                self.temp.push(c);
-            } else if let Some(c) = self.temp.pop() {
-                self.path.set(c);
-            } else {
-                let c = self.text.next().unwrap();
-                self.path.set(c);
-            }
-            self.next()
-        } else if let Some(c) = self.temp.pop() {
-            self.path.set(c);
-            self.next()
-        } else {
-            None
-        }
-    }*/
 }
 
+/// Gets the source sans pro font
 pub fn source_font() -> Font<'static> {
     const SOURCE_FONT: &[u8] = include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf");
     Font::new()
@@ -559,8 +308,8 @@ fn t(){
         "In publishing and graphic design, Lorem ipsum is a placeholder text commonly used to demonstrate the visual form of a document or a typeface without relying on meaningful content.",
         10000,
         -800
-    ).0;
+    );
     println!("{:?}", iter.offset);
-    let path = kurbo::BezPath::from_vec(iter.map(|p| p).collect());
+    let _ = kurbo::BezPath::from_vec(iter.map(|p| p).collect());
     
 }
