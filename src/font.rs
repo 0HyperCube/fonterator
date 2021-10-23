@@ -14,6 +14,9 @@ use rustybuzz::{
 };
 use ttf_parser::{kern::Subtable, Face, GlyphId, OutlineBuilder};
 
+#[macro_use]
+extern crate lazy_static;
+
 struct LangFont<'a>(Face<'a>, FaceShaper<'a>);
 
 struct Outliner<'a> {
@@ -31,15 +34,19 @@ impl OutlineBuilder for Outliner<'_> {
     fn move_to(&mut self, x: f32, y: f32) {
         let x = x + self.offset.0;
         let y = self.ascender - (y + self.offset.1);
-        self.path
-            .push(PathEl::MoveTo(Point::new((x * self.scale) as f64, (y * self.scale) as f64)));
+        self.path.push(PathEl::MoveTo(Point::new(
+            (x * self.scale) as f64,
+            (y * self.scale) as f64,
+        )));
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
         let x = x + self.offset.0;
         let y = self.ascender - (y + self.offset.1);
-        self.path
-            .push(PathEl::LineTo(Point::new((x * self.scale) as f64, (y * self.scale) as f64)));
+        self.path.push(PathEl::LineTo(Point::new(
+            (x * self.scale) as f64,
+            (y * self.scale) as f64,
+        )));
     }
 
     fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
@@ -510,6 +517,9 @@ impl Iterator for TextPathIterator<'_, '_> {
     }*/
 }
 
-const SOURCE_FONT: Font<'static> = Font::new()
-    .push(include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf"))
-    .unwrap();
+lazy_static! {
+    static ref SOURCE_REGULAR: &[u8] =
+        include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf");
+    pub static ref SOURCE_FONT: Font<'static> =
+        Font::new().push(SOURCE_REGULAR).unwrap();
+}

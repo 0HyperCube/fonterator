@@ -28,9 +28,8 @@ kurbo = { git = "https://github.com/GraphiteEditor/kurbo.git" }        # For vec
 unicode-script = "0.5" # For calculating text direction.
 ttf-parser = "0.12"    # For reading TTF/OTF files
 rustybuzz = "0.4"      # For text shaping
+lazy_static = "*"
 
 [features]
 default = []
 docs-rs = []
-monospace-font = []
-normal-font = []
