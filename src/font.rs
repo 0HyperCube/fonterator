@@ -93,11 +93,7 @@ impl<'a> StyledFont<'a> {
         path: &mut Vec<PathEl>,
         offset: &mut (i32, i32),
     ) {
-        let GlyphInfo {
-            glyph_id,
-            cluster: _,
-            ..
-        } = self.glyph_buffer.as_ref().unwrap().glyph_infos()[index];
+        
         let GlyphPosition {
             x_advance,
             y_advance,
@@ -105,7 +101,12 @@ impl<'a> StyledFont<'a> {
             y_offset,
             ..
         } = self.glyph_buffer.as_ref().unwrap().glyph_positions()[index];
-
+        println!("X off {}", x_offset);
+        let GlyphInfo {
+            glyph_id,
+            cluster: _,
+            ..
+        } = self.glyph_buffer.as_ref().unwrap().glyph_infos()[index];
         let glyph_id = GlyphId(glyph_id as u16);
         let scale = (self.none.0.height() as f32).recip();
 
@@ -119,6 +120,7 @@ impl<'a> StyledFont<'a> {
             x_offset as f32,
             (y_offset - self.none.0.ascender() as i32) as f32,
         );
+        println!("act offset {:?}",offset);
 
         self.none.0.outline_glyph(
             glyph_id,
@@ -174,7 +176,8 @@ impl<'a> Font<'a> {
     pub fn render<'b>(
         &'b mut self,
         text: &str,
-        row: i32,
+        row_length: i32,
+        row_drop: i32,
     ) -> (TextPathIterator<'a, 'b>, Option<usize>) {
         let mut text = text;
 
@@ -213,13 +216,8 @@ impl<'a> Font<'a> {
             .glyph_positions();
         let infos = self.fonts[0].glyph_buffer.as_ref().unwrap().glyph_infos();
         let mut until = positions.len();
-        'crop: for (index, glyph) in positions.iter().enumerate() {
-            if glyph.x_offset > row {
-                left_over = Some(infos[index].cluster as usize);
-                until = index;
-                break 'crop;
-            }
-        }
+        let mut x_pos = 0;
+        
 
         // Return iterator over PathOps and index to start on next call.
         (
@@ -229,6 +227,8 @@ impl<'a> Font<'a> {
                 index: 0,
                 path_i: 0,
                 offset: (0, 0),
+                row_length,
+                row_drop
             },
             left_over,
         )
@@ -451,7 +451,9 @@ pub struct TextPathIterator<'a, 'b> {
     // Index for `PathEl`s.
     path_i: usize,
     // x and y offset.
-    offset: (i32, i32),
+    pub offset: (i32, i32),
+    row_length: i32,
+    row_drop: i32,
 }
 
 impl Iterator for TextPathIterator<'_, '_> {
@@ -474,6 +476,11 @@ impl Iterator for TextPathIterator<'_, '_> {
                 &mut self.fontc.paths,
                 &mut self.offset,
             );
+            println!("off {:?}", self.offset);
+            if self.offset.0 > self.row_length{
+                self.offset.0 = 0;
+                self.offset.1 += self.row_drop;
+            }
             self.index += 1;
             self.next()
         } else {
@@ -521,4 +528,17 @@ pub fn source_font() -> Font<'static> {
     Font::new()
         .push(SOURCE_FONT)
         .unwrap()
+}
+
+#[test]
+fn t(){
+    let mut f = source_font();
+    let iter = f.render(
+        "In publishing and graphic design, Lorem ipsum is a placeholder text commonly used to demonstrate the visual form of a document or a typeface without relying on meaningful content.",
+        10000,
+        600
+    ).0;
+    println!("{:?}", iter.offset);
+    let path = kurbo::BezPath::from_vec(iter.map(|p| p).collect());
+    
 }
