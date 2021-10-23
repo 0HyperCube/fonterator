@@ -516,7 +516,9 @@ impl Iterator for TextPathIterator<'_, '_> {
     }*/
 }
 
-lazy_static! {
-    pub static ref SOURCE_FONT: Font<'static> =
-        Font::new().push(include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf") as &[u8]).unwrap();
+pub fn source_font() -> Font<'static> {
+    const SOURCE_FONT: &[u8] = include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf");
+    Font::new()
+        .push(SOURCE_FONT)
+        .unwrap()
 }

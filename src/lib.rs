@@ -31,9 +31,6 @@
     variant_size_differences
 )]
 
-#[macro_use]
-extern crate lazy_static;
-
 mod direction;
 mod font;
 
