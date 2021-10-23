@@ -101,7 +101,6 @@ impl<'a> StyledFont<'a> {
             y_offset,
             ..
         } = self.glyph_buffer.as_ref().unwrap().glyph_positions()[index];
-        println!("X off {}", x_offset);
         let GlyphInfo {
             glyph_id,
             cluster: _,
@@ -120,7 +119,6 @@ impl<'a> StyledFont<'a> {
             x_offset as f32,
             (y_offset - self.none.0.ascender() as i32) as f32,
         );
-        println!("act offset {:?}",offset);
 
         self.none.0.outline_glyph(
             glyph_id,
@@ -215,9 +213,33 @@ impl<'a> Font<'a> {
             .unwrap()
             .glyph_positions();
         let infos = self.fonts[0].glyph_buffer.as_ref().unwrap().glyph_infos();
-        let mut until = positions.len();
+        let until = positions.len();
+
         let mut x_pos = 0;
-        
+        let mut row_indicies = Vec::new();
+        let mut last_space = None;
+        for (index, character) in text.char_indices(){
+            x_pos+= positions[index].x_advance;
+            if character == ' '{
+                println!("Space at {}", index);
+                last_space = Some(index);
+            }
+            if character == '\n'{
+                row_indicies.push(index);
+                x_pos = 0;
+                last_space = None;
+            }
+            if x_pos > row_length{
+                if let Some(x) = last_space{
+                    row_indicies.push(x);
+                }else{
+                    row_indicies.push(index);
+                }
+                
+                x_pos = 0;
+                last_space = None;
+            }
+        }
 
         // Return iterator over PathOps and index to start on next call.
         (
@@ -227,7 +249,7 @@ impl<'a> Font<'a> {
                 index: 0,
                 path_i: 0,
                 offset: (0, 0),
-                row_length,
+                row_indicies,
                 row_drop
             },
             left_over,
@@ -452,7 +474,7 @@ pub struct TextPathIterator<'a, 'b> {
     path_i: usize,
     // x and y offset.
     pub offset: (i32, i32),
-    row_length: i32,
+    row_indicies: Vec<usize>,
     row_drop: i32,
 }
 
@@ -477,7 +499,7 @@ impl Iterator for TextPathIterator<'_, '_> {
                 &mut self.offset,
             );
             println!("off {:?}", self.offset);
-            if self.offset.0 > self.row_length{
+            if self.row_indicies.contains(&self.index){
                 self.offset.0 = 0;
                 self.offset.1 += self.row_drop;
             }
@@ -536,7 +558,7 @@ fn t(){
     let iter = f.render(
         "In publishing and graphic design, Lorem ipsum is a placeholder text commonly used to demonstrate the visual form of a document or a typeface without relying on meaningful content.",
         10000,
-        600
+        -800
     ).0;
     println!("{:?}", iter.offset);
     let path = kurbo::BezPath::from_vec(iter.map(|p| p).collect());
