@@ -518,7 +518,7 @@ impl Iterator for TextPathIterator<'_, '_> {
 }
 
 lazy_static! {
-    static ref SOURCE_REGULAR: &[u8] =
+    static ref SOURCE_REGULAR: &'static[u8] =
         include_bytes!("sourcesanspro/SourceSansPro-Regular.ttf");
     pub static ref SOURCE_FONT: Font<'static> =
         Font::new().push(SOURCE_REGULAR).unwrap();
